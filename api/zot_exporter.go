@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"fmt"
@@ -18,6 +18,7 @@ var (
 		nil, nil,
 	)
 	invalidChars = regexp.MustCompile("[^a-zA-Z0-9:_]")
+	controller *Controller
 )
 
 type ZotCollector struct {
@@ -31,9 +32,9 @@ func (c ZotCollector) Describe(ch chan<- *prometheus.Desc) {
 // Implements prometheus.Collector.
 func (c ZotCollector) Collect(ch chan<- prometheus.Metric) {
 	config := monitoring.ZotMetricsConfig{}
-	config.Address = "http://localhost:5051"
+	config.Address = controller.Address
 
-	zot, err := monitoring.NewMetricsClient(&config)
+	zot, err := monitoring.NewMetricsClient(&config, controller.Config.HTTP.Host, controller.Log)
 	if err != nil {
 		ch <- prometheus.MustNewConstMetric(up, prometheus.GaugeValue, 0)
 		return
@@ -52,9 +53,9 @@ func (c ZotCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, g := range metrics.Gauges {
 		name := invalidChars.ReplaceAllLiteralString(g.Name, "_")
-		desc := prometheus.NewDesc(name, "Zot metric "+g.Name, g.LabelNames, nil)
+		desc := prometheus.NewDesc(name, "Zot metric "+g.Name, nil, nil)
 		ch <- prometheus.MustNewConstMetric(
-			desc, prometheus.GaugeValue, float64(g.Value), g.LabelValues...)
+			desc, prometheus.GaugeValue, float64(g.Value))
 	}
 
 	for _, c := range metrics.Counters {
@@ -69,21 +70,23 @@ func (c ZotCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, s := range metrics.Samples {
 		// All samples are times in milliseconds, we convert them to seconds below.
-		name := invalidChars.ReplaceAllLiteralString(s.Name, "_")
+		name := invalidChars.ReplaceAllLiteralString(s.Name, "_") + "_seconds"
 		countDesc := prometheus.NewDesc(
-			name+"_count", "Zot metric "+s.Name, s.LabelNames, nil)
+			name+"_count", "Zot metric "+s.Name, nil, nil)
 		ch <- prometheus.MustNewConstMetric(
-			countDesc, prometheus.CounterValue, float64(s.Count), s.LabelValues...)
+			countDesc, prometheus.CounterValue, float64(s.Count))
 		sumDesc := prometheus.NewDesc(
-			name+"_sum", "Zot metric "+s.Name, s.LabelNames, nil)
+			name+"_sum", "Zot metric "+s.Name, nil, nil)
 		ch <- prometheus.MustNewConstMetric(
-			sumDesc, prometheus.CounterValue, s.Sum, s.LabelValues...)
+			sumDesc, prometheus.CounterValue, s.Sum/1000)
 	}
 }
 
-func main() {
+func RunZotExporter(ctrl *Controller) {
+	controller = ctrl
+
 	c := ZotCollector{}
 	prometheus.MustRegister(c)
 	http.Handle("/metrics", promhttp.Handler())
-	log.Fatal(http.ListenAndServe(":8000", nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", controller.Config.Port), nil))
 }
