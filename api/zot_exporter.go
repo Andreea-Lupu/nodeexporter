@@ -53,9 +53,9 @@ func (c ZotCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, g := range metrics.Gauges {
 		name := invalidChars.ReplaceAllLiteralString(g.Name, "_")
-		desc := prometheus.NewDesc(name, "Zot metric "+g.Name, nil, nil)
+		desc := prometheus.NewDesc(name, "Zot metric "+g.Name, g.LabelNames, nil)
 		ch <- prometheus.MustNewConstMetric(
-			desc, prometheus.GaugeValue, float64(g.Value))
+			desc, prometheus.GaugeValue, float64(g.Value), g.LabelValues...)
 	}
 
 	for _, c := range metrics.Counters {
@@ -70,15 +70,15 @@ func (c ZotCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, s := range metrics.Samples {
 		// All samples are times in milliseconds, we convert them to seconds below.
-		name := invalidChars.ReplaceAllLiteralString(s.Name, "_") + "_seconds"
+		name := invalidChars.ReplaceAllLiteralString(s.Name, "_")
 		countDesc := prometheus.NewDesc(
-			name+"_count", "Zot metric "+s.Name, nil, nil)
+			name+"_count", "Zot metric "+s.Name, s.LabelNames, nil)
 		ch <- prometheus.MustNewConstMetric(
-			countDesc, prometheus.CounterValue, float64(s.Count))
+			countDesc, prometheus.CounterValue, float64(s.Count), s.LabelValues...)
 		sumDesc := prometheus.NewDesc(
-			name+"_sum", "Zot metric "+s.Name, nil, nil)
+			name+"_sum", "Zot metric "+s.Name, s.LabelNames, nil)
 		ch <- prometheus.MustNewConstMetric(
-			sumDesc, prometheus.CounterValue, s.Sum/1000)
+			sumDesc, prometheus.CounterValue, s.Sum, s.LabelValues...)
 	}
 }
 
